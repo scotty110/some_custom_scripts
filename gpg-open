@@ -1,0 +1,183 @@
+#!/bin/bash
+# A all in one decryption and encryption tool
+# Use for archive that you need to edit
+
+set -Eeuo pipefail
+
+
+usage() {
+    cat <<EOF
+Usage: $(basename "${BASH_SOURCE[0]}") [-h] [-v] [encrypted_file]
+
+This script opens a encrypted folder/archive, then saves any changes made to disk.
+Uses GPG_USER_NAME specified in ./bashrc to preform RSA-hybrid encrption, for
+    symmetric encryption use gpg-encrypt
+ex. gpg-open ./test.tar.gpg
+
+Available options:
+
+-h, --help      Print this help and exit
+-v, --verbose   Print script debug info
+EOF
+    exit
+}
+
+
+get_file_name() {
+    local FULL_PATH=${1:-$(</dev/stdin)}
+    #$FULL_PATH | sed 's/.*\///'
+    printf $(basename $FULL_PATH )
+}
+
+
+decrypt_folder() {
+    # GPG Decrypt command
+    local gpg_d="gpg --decrypt --quiet --no-greeting --pinentry-mode=loopback"
+
+    # String Parsing stuff
+    local FULL_PATH=${1:-$(</dev/stdin)} #This is the path to the file
+    local FILE_NAME=$(get_file_name $FULL_PATH) #This is the file's name irrespective of the path
+    local FOLDER="$(echo ${FILE_NAME:0:$((${#FILE_NAME}-8))})" #This is the folders/ecrytpted archives name
+    local DECRYPT_LOC="/tmp/$FOLDER"
+    local DECRYPT_LINK="$HOME/Desktop/$FOLDER"
+
+    # Make location where to store decrytpted data
+    mkdir -p $DECRYPT_LOC #Make tmp location
+
+    #Decrypt
+    $gpg_d $FULL_PATH | tar -x -C $DECRYPT_LOC
+
+    # Now create Desktop system link to view
+    ln -s $DECRYPT_LOC $DECRYPT_LINK
+
+    # Return Location
+    printf "$DECRYPT_LINK"
+}
+
+encrypt_folder_OLD() {
+    # Encrypt Folder (and possible save over)
+    local TMP_FOLDER=${1:-$(</dev/stdin)}
+    local ORIGINAL_FOLDER_PATH=${2:-$(</dev/stdin)} # /path/to/earchive.tar.gpg
+    local gpg_e
+    read -r -p "Do you wan to use symmetric encryption? [Y/n] " gpg_input
+    case $gpg_input in
+        [yY][eE][sS]|[yY])
+            gpg_e="gpg -c"
+        ;;
+        [nN][oO]|[nN])
+            gpg_e="gpg -ser $GPG_USER_NAME"
+        ;;
+        *)
+            echo "Invalid input..."
+            encrypt_folder $TMP_FOLDER
+        ;;
+    esac
+
+    # Now Encrypt
+    local FILE_NAME=$(get_file_name $TMP_FOLDER)
+
+    tar -cC $TMP_FOLDER . | $gpg_e -o $ORIGINAL_FOLDER_PATH
+}
+
+
+encrypt_folder() {
+    # Encrypt Folder (and possible save over)
+    local TMP_FOLDER=${1:-$(</dev/stdin)}
+    local ORIGINAL_FOLDER_PATH=${2:-$(</dev/stdin)} # /path/to/earchive.tar.gpg
+    local gpg_e="gpg -ser $GPG_USER_NAME"
+
+    # Now Encrypt opened folder
+    #local FILE_NAME=$(get_file_name $TMP_FOLDER)
+    tar -cC $TMP_FOLDER . | $gpg_e -o $ORIGINAL_FOLDER_PATH
+
+}
+
+
+destroy_folder() {
+    local TO_DELETE=${1:-$(</dev/stdin)}
+    rm -rf $(realpath $TO_DELETE)
+    rm -rf $TO_DELETE
+}
+
+
+save_archive() {
+    # Ask Questions to save folder
+    local TMP_FOLDER=${1:-$(</dev/stdin)}
+    local ORIGINAL_FOLDER_PATH=${2:-$(</dev/stdin)}
+    read -r -p "Do you wan to save changes to archive? [Y/n] " save_input
+    case $save_input in
+        [yY][eE][sS]|[yY])
+            echo "closed and saved"
+            encrypt_folder $TMP_FOLDER $ORIGINAL_FOLDER_PATH
+        ;;
+        [nN][oO]|[nN])
+            echo "closed and not saved"
+        ;;
+        *)
+            echo "Invalid input..."
+            save_archive $TMP_FOLDER $ORIGINAL_FOLDER_PATH
+        ;;
+    esac
+    destroy_folder $TMP_FOLDER
+
+}
+
+
+close_archive() {
+    local TMP_FOLDER=${1:-$(</dev/stdin)}
+    local ORIGINAL_FOLDER_PATH=${2:-$(</dev/stdin)}
+    read -r -p "Do you want to close archive? [Y/n] " close_input
+
+    # Close Archive -> Save Archve -> Ecryption Type to use
+    case $close_input in
+        [yY][eE][sS]|[yY])
+            echo "Close"
+            save_archive $TMP_FOLDER $ORIGINAL_FOLDER_PATH
+        ;;
+        [nN][oO]|[nN])
+            #echo "No"
+            close_archive $TMP_FOLDER $ORIGINAL_FOLDER_PATH
+        ;;
+        *)
+        echo "Invalid input..."
+        exit 1
+        ;;
+    esac
+}
+
+
+parse_params() {
+    # default values of variables set from params
+    while :; do
+        case "${1-}" in
+            -h | --help) usage ;;
+            -v | --verbose) set -x ;;
+            -?*) die "Unknown option: $1" ;;
+            *) break ;;
+        esac
+        shift
+    done
+
+    # Parse file
+    FULL_PATH="${@:$#}" #This is the input for stuff
+    #FILE=$(get_file_name $FULL_PATH)
+
+    # Decrypt and then hold
+    local TMP_FOLDER=$(decrypt_folder "$FULL_PATH")
+
+    # Ask Questions for Closing and saving
+    close_archive $TMP_FOLDER $FULL_PATH
+
+    return 0
+}
+
+
+#MAIN RUNNER
+if [ $# -eq 0 ]; then
+    usage
+else
+    parse_params $@
+fi
+
+exit
+

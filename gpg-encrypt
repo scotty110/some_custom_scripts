@@ -1,0 +1,95 @@
+#!/bin/bash
+# Take folder and Encrypt it
+# GPG setting have already been set system wide, so can for go the following
+# Taken from: https://github.com/SixArm/gpg-encrypt/blob/master/gpg-encrypt
+#set -eu
+#gpg \
+#    --symmetric \
+#    --cipher-algo aes256 \
+#    --digest-algo sha256 \
+#    --cert-digest-algo sha256 \
+#    --compress-algo none -z 0 \
+#    --s2k-mode 3 \
+#    --s2k-digest-algo sha512 \
+#    --s2k-count 65011712 \
+#    --force-mdc \
+#    --quiet --no-greeting \
+#    --pinentry-mode=loopback \
+#    "$@"
+
+
+set -Eeuo pipefail
+
+
+usage() {
+    cat <<EOF
+Usage: $(basename "${BASH_SOURCE[0]}") [-h] [-v] [-c] [folder]
+
+This script encrypts a folder/archive.
+Uses GPG_USER_NAME specified in ./bashrc to preform RSA-hybrid encrption
+ex. gpg-encrypt ./test
+
+Available options:
+
+-h, --help      Print this help and exit
+-v, --verbose   Print script debug info
+-c, --symmetric Use symmetric encryption
+EOF
+    exit
+}
+
+
+encrypt_folder() {
+    # Encrypt Folder (and possible save over)
+    local FOLDER=${1:-$(</dev/stdin)} # /path/to/earchive.tar.gpg
+    local GPG_TYPE=${2:-$(</dev/stdin)}
+    local FILE="$FOLDER.tar.gpg"
+
+    local GPG_E
+    if $GPG_SYMMETRIC; then
+        GPG_E="gpg -c"
+    else
+        GPG_E="gpg -ser $GPG_USER_NAME"
+    fi
+
+    # Now Encrypt opened folder
+    tar -cC $FOLDER . | $GPG_E -o $FILE
+}
+
+
+parse_params() {
+    # default values of variables set from params
+    local GPG_SYMMETRIC=false
+    while :; do
+        case "${1-}" in
+            -h | --help)
+                usage ;;
+            -v | --verbose)
+                set -x ;;
+            -c | --symmetric)
+                GPG_SYMMETRIC=true ;;
+            -?*) die "Unknown option: $1" ;;
+            *) break ;;
+        esac
+        shift
+    done
+
+    # Parse file
+    FULL_PATH="${@:$#}" #This is the input for stuff
+    echo $FULL_PATH
+    #FILE=$(get_file_name $FULL_PATH)
+
+    # Encrypt Folder
+    encrypt_folder $FULL_PATH $GPG_SYMMETRIC
+    return 0
+}
+
+
+#MAIN RUNNER
+if [ $# -eq 0 ]; then
+    usage
+else
+    parse_params $@
+fi
+
+exit

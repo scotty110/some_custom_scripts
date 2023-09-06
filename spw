@@ -1,0 +1,11 @@
+#!/bin/bash
+# make a strong pw (512 bits entropy)
+
+# https://en.wikipedia.org/wiki/Random_password_generator
+
+set -eu
+export LC_CTYPE=C
+# Provides 512 bits security (log2( 62**86) ): https://en.wikipedia.org/wiki/Password_strength 
+#(tr -c -d '[:alnum:]' < /dev/urandom | head -c128) | xclip -sel c 
+(tr -c -d '[:graph:]' < /dev/urandom | head -c128) | xclip -sel c 
+exit

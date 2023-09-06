@@ -1,0 +1,83 @@
+#!/bin/bash
+# Decrypt a file or a folder
+
+set -Eeuo pipefail
+
+usage() {
+    cat <<EOF
+Usage: $(basename "${BASH_SOURCE[0]}") [-h] [-v] [encrypted_file]
+
+This script takes an encrypted folder/archive and decrypts it.
+ex. gpg-decrypt ./test.tar.gpg
+
+Available options:
+
+-h, --help      Print this help and exit
+-v, --verbose   Print script debug info
+EOF
+    exit
+}
+
+
+get_file_name() {
+    local FULL_PATH=${1:-$(</dev/stdin)}
+    printf $(basename $FULL_PATH )
+}
+
+
+decrypt_folder() {
+    # GPG Decrypt command
+    local gpg_d="gpg --decrypt --quiet --no-greeting --pinentry-mode=loopback"
+
+    # String Parsing stuff
+    local FULL_PATH=${1:-$(</dev/stdin)} #This is the path to the file
+    local FILE_NAME=$(get_file_name $FULL_PATH) #This is the file's name irrespective of the path
+    local FOLDER="$(echo ${FILE_NAME:0:$((${#FILE_NAME}-8))})" #This is the folders/ecrytpted archives name
+    local DECRYPT_LOC="/tmp/$FOLDER"
+    local DECRYPT_LINK="$HOME/Desktop/$FOLDER"
+
+    # Make location where to store decrytpted data
+    mkdir -p $DECRYPT_LOC #Make tmp location
+
+    #Decrypt
+    $gpg_d $FULL_PATH | tar -x -C $DECRYPT_LOC
+
+    # Now create Desktop system link to view
+    ln -s $DECRYPT_LOC $DECRYPT_LINK
+
+    # Return Location
+    printf "$DECRYPT_LINK"
+}
+
+
+parse_params() {
+    # default values of variables set from params
+    while :; do
+        case "${1-}" in
+            -h | --help) usage ;;
+            -v | --verbose) set -x ;;
+            -?*) die "Unknown option: $1" ;;
+            *) break ;;
+        esac
+        shift
+    done
+
+    # Parse file
+    FULL_PATH="${@:$#}" #This is the input for stuff
+
+    # Decrypt folder/archive
+    decrypt_folder "$FULL_PATH"
+
+    return 0
+}
+
+# MAIN Runner
+if [ $# -eq 0 ]; then
+    usage
+else
+    parse_params $@
+fi
+
+exit
+
+

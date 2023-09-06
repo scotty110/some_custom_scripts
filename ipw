@@ -1,0 +1,7 @@
+#!/bin/bash
+# make an internet password 
+
+set -eu
+export LC_CTYPE=C
+(tr -c -d '[:alnum:]' < /dev/urandom | head -c24) | xclip -sel c 
+exit
